@@ -7,6 +7,7 @@
 
   const NEON_GREEN = '#39ff14';
   const SYNTH_SMOOTH = 0.045;
+  const LIVE_ATTACK_SEC = 0.002;
   const GROWTH_STAGES = ['seed', 'sprout', 'leaves', 'bud', 'bloom', 'pollination'];
   const GROWTH_THRESHOLDS_MS = [0, 400, 1200, 2500, 4500, 8000];
 
@@ -420,6 +421,7 @@
     const velScale = params.velocityScale != null ? params.velocityScale : 1;
     const attack = sound.attack * imperfection.attackScale;
     const release = Math.min(sound.release * imperfection.releaseScale, 4);
+    const instantAttack = options.instantAttack !== false;
 
     const voiceFilter = audioCtx.createBiquadFilter();
     voiceFilter.type = sound.filterType || 'lowpass';
@@ -431,8 +433,14 @@
 
     const voiceGain = audioCtx.createGain();
     const peak = 0.24 * velScale * (0.92 + growthCfg.bloomIntensity * 0.08);
-    voiceGain.gain.setValueAtTime(0.001, startTime);
-    voiceGain.gain.exponentialRampToValueAtTime(Math.max(peak, 0.001), startTime + attack);
+    if (instantAttack) {
+      voiceGain.gain.setValueAtTime(peak, startTime);
+    } else {
+      voiceGain.gain.setValueAtTime(0.001, startTime);
+      voiceGain.gain.exponentialRampToValueAtTime(
+        Math.max(peak, 0.001), startTime + attack
+      );
+    }
 
     const panNode = audioCtx.createStereoPanner();
     const panVal = typeof sound.pan === 'function' ? sound.pan() : (sound.pan || 0);
@@ -678,6 +686,7 @@
   const PlantasiaEngine = {
     NEON_GREEN,
     SYNTH_SMOOTH,
+    LIVE_ATTACK_SEC,
     GROWTH_STAGES,
     LEGACY_PRESETS,
     buildPresetRegistry,

@@ -409,6 +409,8 @@ document.addEventListener('DOMContentLoaded', function () {
         if (welcomePollenAnimId) cancelAnimationFrame(welcomePollenAnimId);
         selectPreset('junoflowers');
         setMode('juno-flow', { force: true });
+        initAudio();
+        ensureAudioReady();
         animate();
         showPlayGuide();
         if (openDrawerBtn) openDrawerBtn.focus();
@@ -665,9 +667,10 @@ document.addEventListener('DOMContentLoaded', function () {
     vine.points.push({x: vine.tipX, y: vine.tipY, angle: vine.tipAngle, age: 0});
   }
 
-  function growVineFrame() {
+  function growVineFrame(options) {
+    options = options || {};
     let ctx = canvas.getContext("2d");
-    if (typeof updateVisualSynthState === 'function') updateVisualSynthState();
+    if (!options.flush && typeof updateVisualSynthState === 'function') updateVisualSynthState();
     const filterBright = synthVisual.brightness || 0.5;
     const volScale = synthVisual.volumeScale || 0.6;
     const echoGlow = synthVisual.echoGlow || 0;
@@ -773,7 +776,7 @@ document.addEventListener('DOMContentLoaded', function () {
       ctx.fill();
     });
 
-    if (isGrowthMode()) vineAnimId = requestAnimationFrame(growVineFrame);
+    if (!options.flush && isGrowthMode()) vineAnimId = requestAnimationFrame(growVineFrame);
   }
 
   function vinePulse() {
@@ -1157,7 +1160,8 @@ document.addEventListener('DOMContentLoaded', function () {
     _junoGlyph(jc, fl.keyLabel, fl.x, fl.y + 16, JUNO_MIN_GLYPH, bright ? 0.85 : 0.38, bright);
   }
 
-  function drawJunoFrame() {
+  function drawJunoFrame(options) {
+    options = options || {};
     if (!isJunoFlowMode()) {
       cancelAnimationFrame(junoFlowersAnimId);
       junoFlowersAnimId = null;
@@ -1174,7 +1178,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const W = sc.W, H = sc.H;
     sc.t++;
     const t = sc.t;
-    if (typeof updateVisualSynthState === 'function') updateVisualSynthState();
+    if (!options.flush && typeof updateVisualSynthState === 'function') updateVisualSynthState();
     const jc = canvas.getContext('2d');
     const groundY = H * 0.77;
     const tempoPulse = Math.sin(synthVisual.tempoPulse * Math.PI * 2) * 0.12;
@@ -1253,12 +1257,66 @@ document.addEventListener('DOMContentLoaded', function () {
       _junoGlyph(jc, p.ch, p.x, p.y, p.size, (0.18 + echoGlow * 0.35 + filterBright * 0.12) * p.life);
     });
 
-    junoFlowersAnimId = requestAnimationFrame(drawJunoFrame);
+    if (!options.flush) junoFlowersAnimId = requestAnimationFrame(drawJunoFrame);
   }
   // ═══════════════════════════════════════════════════════════════════════════
   //  END JUNO FLOWERS
   // ═══════════════════════════════════════════════════════════════════════════
-  // Presets loaded from Plantasia Signature Sound Engine
+  function flushModeVisual() {
+    if (isJunoFlowMode()) {
+      if (!junoFlowersAnimId) drawJunoFrame();
+      else drawJunoFrame({ flush: true });
+    } else if (isGrowthMode()) {
+      if (!vineAnimId) growVineFrame();
+      else growVineFrame({ flush: true });
+    } else {
+      drawEqVisualizerFrame({ flush: true });
+    }
+  }
+
+  function drawEqVisualizerFrame(options) {
+    options = options || {};
+    if (!analyser || !dataArray) return;
+    if (!options.flush && typeof updateVisualSynthState === 'function') updateVisualSynthState();
+    eqNotePulse *= 0.91;
+    let ctx = canvas.getContext("2d");
+    analyser.getByteTimeDomainData(dataArray);
+    ctx.fillStyle = "rgba(17, 17, 17, 0.06)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (trailFrames.length > 12 + Math.floor(synthVisual.echoGlow * 8)) trailFrames.shift();
+    trailFrames.push([...dataArray]);
+
+    const grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
+    grad.addColorStop(0, currentWaveColor);
+    grad.addColorStop(1, "#000000");
+    const volBoost = 0.65 + synthVisual.volumeScale * 0.55 + eqNotePulse * 0.25;
+    const lineGlow = 10 + synthVisual.brightness * 18 + synthVisual.echoGlow * 12 + eqNotePulse * 14;
+    const lineThick = 1 + synthVisual.brightness * 0.8 + eqNotePulse * 1.2;
+
+    for (let t = 0; t < trailFrames.length; t++) {
+      const data = trailFrames[t];
+      const slice = canvas.width / data.length;
+      ctx.beginPath();
+      let x = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128.0;
+        const y = (v * canvas.height / 2.0 * 0.9 * volBoost) + canvas.height / 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        x += slice;
+      }
+      const alpha = (0.05 + (t / trailFrames.length) * 0.14) * volBoost;
+      ctx.strokeStyle = grad;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = lineThick;
+      ctx.shadowBlur = lineGlow;
+      ctx.shadowColor = currentWaveColor;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1.0;
+    }
+  }
   const presetSettings = PlantasiaEngine.buildPresetRegistry();
 
   // Transport & canvas state — must be declared before readUISynthState (assigns bpm)
@@ -1795,7 +1853,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const now = audioCtx.currentTime;
     if (typeof midiEventTimeMs !== "number") return now;
     const delta = (midiEventTimeMs - performance.now()) / 1000;
-    return Math.max(now, now + Math.min(delta, 0.02));
+    return Math.max(now, now + Math.max(0, Math.min(delta, 0.012)));
+  }
+
+  function ensureLiveAudioReady() {
+    if (!audioCtx) initAudio();
+    if (audioCtx && audioCtx.state !== 'running') {
+      audioCtx.resume();
+    }
+    return audioCtx;
   }
 
   /** Keyboard/MIDI path — Plantasia Signature Sound Engine voice */
@@ -1810,6 +1876,7 @@ document.addEventListener('DOMContentLoaded', function () {
       graph: botanicalGraph,
       createVoiceSource,
       getLfoDepth,
+      instantAttack: true,
       onGrowthPulse: function () {
         if (isGrowthMode()) vinePulse();
       }
@@ -1942,24 +2009,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function holdNote(voiceId, freq, velocity, midiEventTimeMs) {
     if (activeVoices.has(voiceId)) return;
+    if (!ensureLiveAudioReady()) return;
 
-    const startVoice = function() {
-      trimVoicesIfNeeded();
-      const ids = parseVoiceTriggerIds(voiceId);
-      triggerModeNoteVisual(freq, velocity, ids.keyCode, ids.midiNote);
-      const params = buildToneParams(freq, velocity);
-      const startTime = resolveStartTime(midiEventTimeMs);
-      const voice = playLiveVoice(params, startTime, voiceId);
-      voice.noteFreq = freq;
-      activeVoices.set(voiceId, voice);
-    };
+    trimVoicesIfNeeded();
+    const ids = parseVoiceTriggerIds(voiceId);
 
-    if (!audioCtx) initAudio();
-    if (audioCtx.state === 'running') {
-      startVoice();
-    } else {
-      ensureAudioReady().then(startVoice);
-    }
+    triggerModeNoteVisual(freq, velocity, ids.keyCode, ids.midiNote);
+    flushModeVisual();
+
+    const params = buildToneParams(freq, velocity);
+    const startTime = resolveStartTime(midiEventTimeMs);
+    const voice = playLiveVoice(params, startTime, voiceId);
+    voice.noteFreq = freq;
+    activeVoices.set(voiceId, voice);
   }
 
   function holdScaleNote(voiceId, scaleIndex, velocity, midiEventTimeMs) {
@@ -2036,45 +2098,7 @@ document.addEventListener('DOMContentLoaded', function () {
       requestAnimationFrame(animate);
       return;
     }
-    if (typeof updateVisualSynthState === 'function') updateVisualSynthState();
-    eqNotePulse *= 0.91;
-    let ctx = canvas.getContext("2d");
-    analyser.getByteTimeDomainData(dataArray);
-    ctx.fillStyle = "rgba(17, 17, 17, 0.06)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    if (trailFrames.length > 12 + Math.floor(synthVisual.echoGlow * 8)) trailFrames.shift();
-    trailFrames.push([...dataArray]);
-
-    const grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
-    grad.addColorStop(0, currentWaveColor);
-    grad.addColorStop(1, "#000000");
-    const volBoost = 0.65 + synthVisual.volumeScale * 0.55 + eqNotePulse * 0.25;
-    const lineGlow = 10 + synthVisual.brightness * 18 + synthVisual.echoGlow * 12 + eqNotePulse * 14;
-    const lineThick = 1 + synthVisual.brightness * 0.8 + eqNotePulse * 1.2;
-
-    for (let t = 0; t < trailFrames.length; t++) {
-      const data = trailFrames[t];
-      const slice = canvas.width / data.length;
-      ctx.beginPath();
-      let x = 0;
-      for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128.0;
-        const y = (v * canvas.height / 2.0 * 0.9 * volBoost) + canvas.height / 2;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-        x += slice;
-      }
-      const alpha = (0.05 + (t / trailFrames.length) * 0.14) * volBoost;
-      ctx.strokeStyle = grad;
-      ctx.globalAlpha = alpha;
-      ctx.lineWidth = lineThick;
-      ctx.shadowBlur = lineGlow;
-      ctx.shadowColor = currentWaveColor;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1.0;
-    }
+    drawEqVisualizerFrame();
     requestAnimationFrame(animate);
   }
 
@@ -2640,7 +2664,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const fl = findFlowerAt(xy.x, xy.y);
     if (!fl) return;
     e.preventDefault();
-    warmAudioEngine();
+    ensureLiveAudioReady();
     const voiceId = fl.keyCode ? 'touch-' + fl.keyCode : 'midi-' + fl.midiNote;
     const freq = fl.noteFreq;
     activeTouchVoices.set(getPointerKey(e), {
@@ -2674,7 +2698,7 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    warmAudioEngine();
+    ensureLiveAudioReady();
     if (e.code === 'Escape') {
       if (playGuideOpen) {
         e.preventDefault();
