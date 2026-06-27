@@ -27,10 +27,14 @@ No build step — static HTML/CSS/JS.
 
 ```
 plantasia/
-├── index.html              → redirects to plantasia.html
-├── plantasia.html          ← canonical synth app
-├── plantasia-vines.css     ← drawer UI styles (design tokens)
-└── foundation/bootstrap/CUSTOM.css  ← color & typography tokens
+├── index.html              ← main synth app (modes, MIDI, Juno Flow)
+├── plantasia-engine.js     ← signature sound engine (botanical FX, growth)
+├── custom.css              ← UI styles
+├── ROADMAP.md              ← feature checklist
+├── DESIGN_SIGNATURE_SOUND_ENGINE.md  ← sonic identity & engine design spec
+├── HANDOFF.md              ← project context
+├── plantasia.html          ← legacy entry (redirects / alternate)
+└── plantasia-vines.css     ← additional styles
 ```
 
 ## License
