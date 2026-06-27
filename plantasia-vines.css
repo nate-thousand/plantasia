@@ -1,0 +1,234 @@
+/**
+ * Plantasia Vines — layout and drawer UI
+ * Uses design tokens from foundation/bootstrap/CUSTOM.css
+ */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-surface-default);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-base);
+  overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
+  width: 100vw;
+}
+
+#waveCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+  display: block;
+  background: var(--color-surface-default);
+  transition: opacity 0.4s;
+}
+
+.ui {
+  position: absolute;
+  bottom: 0;
+  width: 100vw;
+  background: var(--color-surface-overlay);
+  padding: 18px 0 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 18px 16px;
+  z-index: 2;
+  border-radius: 28px 28px 0 0;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.22s cubic-bezier(0.87, 0, 0.13, 1);
+}
+
+.ui.closed {
+  transform: translateY(105%);
+  pointer-events: none;
+}
+
+.ui.open {
+  transform: translateY(0%);
+  pointer-events: auto;
+}
+
+.ui label {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ui select,
+.ui input[type="range"] {
+  accent-color: var(--color-primary);
+}
+
+.ui select {
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  font-family: var(--font-family-base);
+}
+
+.ui button {
+  font-family: var(--font-family-base);
+  background: var(--color-surface-raised);
+  border: 1.5px solid var(--color-border-default);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+
+.ui button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.drawer-toggle-btn {
+  position: fixed;
+  right: 24px;
+  bottom: 26px;
+  z-index: 10;
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  border: 1.5px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  width: 42px;
+  height: 42px;
+  font-size: 22px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+
+.drawer-toggle-btn.open {
+  background: var(--color-surface-sunken);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+#closeDrawer {
+  position: absolute;
+  top: 7px;
+  right: 17px;
+  z-index: 20;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-lg);
+  border: none;
+  background: var(--color-surface-sunken);
+  color: var(--color-text-primary);
+  font-size: 18px;
+  cursor: pointer;
+  font-family: var(--font-family-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#infoDisplay {
+  position: absolute;
+  top: 18px;
+  left: 16px;
+  z-index: 3;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  padding: 14px 17px 14px 15px;
+  display: none;
+  border-radius: var(--radius-lg);
+  white-space: pre;
+  letter-spacing: 0.4px;
+  border: 1.5px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-md);
+  max-width: 80vw;
+}
+
+.mod-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.mod-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+}
+
+.mod-row label {
+  font-size: var(--font-size-xs);
+}
+
+.growth-toggle-btn {
+  font-size: var(--font-size-base);
+  padding: 7px 18px;
+  background: rgba(58, 247, 121, 0.12);
+  border: 1.5px solid var(--color-primary-muted);
+  color: var(--color-primary-muted);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background 0.18s, color 0.15s, border-color 0.15s;
+  margin-right: 10px;
+  margin-bottom: 2px;
+}
+
+.growth-toggle-btn.active {
+  background: rgba(58, 247, 121, 0.28);
+  color: var(--color-text-primary);
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-glow);
+}
+
+@media (max-width: 700px) {
+  .ui {
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 99vw;
+    min-width: 90vw;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .ui > div {
+    margin: 0 0 8px 0;
+  }
+
+  .ui input[type="range"],
+  .ui select {
+    width: 80vw;
+  }
+
+  .ui button {
+    min-width: 90vw;
+  }
+
+  .drawer-toggle-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 28px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #waveCanvas,
+  .ui,
+  .drawer-toggle-btn,
+  .growth-toggle-btn,
+  .ui button {
+    transition: none;
+  }
+}
