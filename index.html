@@ -612,6 +612,7 @@ document.addEventListener('DOMContentLoaded', function () {
   let growthPollen = [];
   let growthSparkles = [];
   let growthNoteFlash = 0;
+  let growthAnimT = 0;
   let eqAnimId = null;
   let eqNotePulse = 0;
   let activeTouchVoices = new Map();
@@ -647,9 +648,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const growth = preset.growth || {};
     const bloom = growth.bloomIntensity || 1;
     return {
-      color: NEON_GREEN,
-      glow: '#ffffff',
-      leaf: '#cccccc',
+      color: '#4ecdc4',
+      glow: '#82c8b8',
+      leaf: '#58aca2',
       spiral: ['spiralback', 'fibonaccishift'].includes(p),
       zigzag: ['microburst'].includes(p),
       wide: ['greenhouse', 'plantasiaClassic'].includes(p),
@@ -692,23 +693,29 @@ document.addEventListener('DOMContentLoaded', function () {
     let ctx = canvas.getContext("2d");
     if (!options.flush && typeof updateVisualSynthState === 'function') updateVisualSynthState();
 
-    const filterBright = synthVisual.brightness || 0.5;
     const volScale = synthVisual.volumeScale || 0.6;
     const echoGlow = synthVisual.echoGlow || 0;
-    const tempoPulse = Math.sin(synthVisual.tempoPulse * Math.PI * 2) * 0.15;
     const lfoSway = (synthVisual.lfoVisual || 0) * 8;
     const growthLevel = synthVisual.growthLevel || 0;
-    const shimmer = synthVisual.chorusShimmer || 0;
 
     growthNoteFlash *= 0.88;
+    growthAnimT++;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = `rgba(8, 12, 8, ${0.35 + filterBright * 0.25})`;
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const hazeAmt = (synthVisual.reverbHaze || 0) * 0.45 + growthLevel * 0.2;
+    if (hazeAmt > 0.06) {
+      ctx.save();
+      ctx.globalAlpha = 0.025 + hazeAmt * 0.06;
+      ctx.fillStyle = '#ff9a5c';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
 
     if (growthNoteFlash > 0.04) {
       ctx.save();
-      ctx.fillStyle = `rgba(57, 255, 20, ${growthNoteFlash * 0.12})`;
+      ctx.fillStyle = `rgba(57, 255, 20, ${growthNoteFlash * 0.08})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.restore();
     }
@@ -750,88 +757,69 @@ document.addEventListener('DOMContentLoaded', function () {
     if (vine.growthBurst > 0.01) vine.growthBurst *= 0.9;
     else vine.growthBurst = 0;
 
-    const lineW = vinePresetProps.vineWidth + vine.pulse * 4.5 + volScale * 2.5 + burstDrive * 3;
-    const glow = 28 + vine.pulse * 22 + filterBright * 24 + tempoPulse * 14 + echoGlow * 16 + growthLevel * 18;
+    const t = growthAnimT;
+    const lite = options.lite;
+    const ptLen = vine.points.length;
+    const growthBright = burstDrive > 0.1 || vine.pulse > 0.4
+      || (activeVoices && activeVoices.size > 0) || growthNoteFlash > 0.2;
+    const bursting = burstDrive > 0.28;
+    const vineStart = lite ? Math.max(0, ptLen - 150) : 0;
+    const vineStep = lite ? 2 : (ptLen > 500 ? 2 : 1);
 
-    if (echoGlow > 0.08) {
-      ctx.save();
-      ctx.globalAlpha = echoGlow * 0.28;
-      ctx.shadowBlur = glow * 1.5;
-      ctx.shadowColor = vinePresetProps.glow;
-      ctx.strokeStyle = vinePresetProps.color;
-      ctx.lineWidth = lineW * 0.9;
-      ctx.beginPath();
-      for (let i = 0; i < vine.points.length; ++i) {
+    if (!growthTipFlowerCache) growthTipFlowerCache = _junoBuildFlowerDotCache(26);
+
+    if (!lite && echoGlow > 0.08) {
+      for (let i = 0; i < ptLen; i += 3) {
         const p = vine.points[i];
         const ox = Math.sin(i * 0.08 + synthVisual.tempoPulse * 6) * echoGlow * 8;
-        if (i === 0) ctx.moveTo(p.x + ox, p.y);
-        else ctx.lineTo(p.x + ox, p.y);
+        _junoGlyph(ctx, '·', p.x + ox, p.y, Math.max(JUNO_MIN_GLYPH, 7), echoGlow * 0.28, 'outer');
       }
-      ctx.stroke();
-      ctx.restore();
     }
 
-    ctx.save();
-    ctx.shadowBlur = glow;
-    ctx.shadowColor = vinePresetProps.glow;
-    ctx.strokeStyle = vinePresetProps.color;
-    ctx.lineWidth = lineW;
-    ctx.beginPath();
-    for (let i = 0; i < vine.points.length; ++i) {
+    for (let i = vineStart; i < ptLen; i += vineStep) {
       const p = vine.points[i];
-      if (i === 0) ctx.moveTo(p.x, p.y);
-      else ctx.lineTo(p.x, p.y);
+      const frac = i / Math.max(1, ptLen - 1);
+      const leafSway = Math.sin(i * 0.1 + (synthVisual.lfoVisual || 0) * 3) * (2 + lfoSway * 0.35);
+      const stemKey = growthBright && frac > 0.65 ? 'neon' : 'stem';
+      const dotSize = Math.max(JUNO_MIN_GLYPH, 8 + frac * 2 + vine.pulse * 0.5);
+      _junoGlyph(ctx, ':', p.x + leafSway, p.y, dotSize, 0.32 + frac * 0.42, stemKey);
     }
-    ctx.stroke();
-    ctx.shadowBlur = 0;
 
-    for (let i = 16; i < vine.points.length; i += Math.floor(10 + Math.random() * 4)) {
-      const p = vine.points[i];
-      const leafSway = Math.sin(i * 0.1 + (synthVisual.lfoVisual || 0) * 3) * (5 + lfoSway);
-      ctx.save();
-      ctx.translate(p.x + leafSway, p.y);
-      ctx.rotate(p.angle + Math.PI / 2 + leafSway * 0.02);
-      ctx.fillStyle = vinePresetProps.leaf;
-      ctx.globalAlpha = 0.55 + filterBright * 0.35 + vine.pulse * 0.2 + growthLevel * 0.15;
-      const leafSz = vinePresetProps.leafSize * (1 + volScale * 0.4 + vine.pulse * 0.28 + growthLevel * 0.2);
-      ctx.beginPath();
-      ctx.ellipse(0, 0, leafSz, leafSz / 2.2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+    if (!lite) {
+      for (let i = 16; i < ptLen; i += 14) {
+        const p = vine.points[i];
+        const leafSway = Math.sin(i * 0.1 + (synthVisual.lfoVisual || 0) * 3) * (5 + lfoSway);
+        const side = (Math.floor(i / 14) % 2 === 0) ? -1 : 1;
+        _junoDrawLeafSpray(ctx, p.x + leafSway, p.y, side, t, Math.floor(i / 14), growthBright);
+      }
+    } else {
+      for (let i = Math.max(16, vineStart); i < ptLen; i += 14) {
+        const p = vine.points[i];
+        const leafSway = Math.sin(i * 0.1 + (synthVisual.lfoVisual || 0) * 3) * (5 + lfoSway);
+        const side = (Math.floor(i / 14) % 2 === 0) ? -1 : 1;
+        _junoDrawLeafSpray(ctx, p.x + leafSway, p.y, side, t, Math.floor(i / 14), growthBright);
+      }
     }
-    ctx.restore();
 
-    if (burstDrive > 0.08) {
-      const tipR = 18 + burstDrive * 42 + vine.pulse * 12;
-      ctx.save();
-      ctx.strokeStyle = `rgba(57, 255, 20, ${0.25 + burstDrive * 0.55})`;
-      ctx.lineWidth = 2 + burstDrive * 3;
-      ctx.shadowBlur = 16 + burstDrive * 28;
-      ctx.shadowColor = NEON_GREEN;
-      ctx.beginPath();
-      ctx.arc(vine.tipX, vine.tipY, tipR, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = `rgba(57, 255, 20, ${0.15 + burstDrive * 0.35})`;
-      ctx.beginPath();
-      ctx.arc(vine.tipX, vine.tipY, 6 + burstDrive * 10, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
+    const tipPR = 12 + vine.pulse * 10 + burstDrive * 32 + growthLevel * 14 + volScale * 6;
+    _junoDrawFlowerHead(ctx, vine.tipX, vine.tipY, tipPR, growthBright, bursting, t, growthTipFlowerCache);
 
     growthSparkles = growthSparkles.filter(function(s) { return s.life > 0; });
     growthSparkles.forEach(function(s) {
       s.life -= 0.028;
       s.r += s.speed;
-      ctx.save();
-      ctx.globalAlpha = s.life * 0.85;
-      ctx.strokeStyle = NEON_GREEN;
-      ctx.lineWidth = 1.5 + s.life * 2;
-      ctx.shadowBlur = 12 * s.life;
-      ctx.shadowColor = NEON_GREEN;
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
+      const ringGlyphs = bursting ? 14 : 10;
+      for (let k = 0; k < ringGlyphs; k++) {
+        const ang = (k / ringGlyphs) * Math.PI * 2;
+        _junoGlyph(
+          ctx, bursting ? '+' : '·',
+          s.x + Math.cos(ang) * s.r,
+          s.y + Math.sin(ang) * s.r * 0.82,
+          Math.max(JUNO_MIN_GLYPH, 8),
+          s.life * 0.72,
+          bursting ? 'neon' : 'outer'
+        );
+      }
     });
 
     growthPollen = growthPollen.filter(function(p) { return p.life > 0; });
@@ -841,23 +829,13 @@ document.addEventListener('DOMContentLoaded', function () {
       p.vy += 0.035;
       p.vx *= 0.985;
       p.life -= 0.018;
-      const alpha = p.life * 0.9;
-      const radius = p.size * (0.65 + p.life * 0.55);
-      ctx.save();
-      ctx.shadowBlur = radius * 1.8;
-      ctx.shadowColor = NEON_GREEN;
-      ctx.fillStyle = `rgba(57, 255, 20, ${alpha * 0.85})`;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
-      ctx.fill();
-      if (p.ch) {
-        ctx.font = `bold ${Math.max(8, radius)}px ui-monospace, Menlo, monospace`;
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.7})`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(p.ch, p.x, p.y);
-      }
-      ctx.restore();
+      const colorKey = p.neon ? 'neon' : (growthBright ? 'inner' : 'outer');
+      _junoGlyph(
+        ctx, p.ch || '.', p.x, p.y,
+        Math.max(JUNO_MIN_GLYPH, p.size * (0.65 + p.life * 0.55)),
+        p.life * 0.88,
+        colorKey
+      );
     });
 
     if (!options.flush && isGrowthMode()) {
@@ -879,6 +857,19 @@ document.addEventListener('DOMContentLoaded', function () {
   const JUNO_POP_CHARS = ['*', '+', '#', '.', "'", '`'];
   const JUNO_FALL_CHARS = ['*', '.', "'", '`', ','];
   const JUNO_MIN_GLYPH = 8;
+  const JUNO_DOT_CHARS = ['·', '.', '•', ':', '`', '○'];
+  const JUNO_PALETTE = {
+    center: [248, 255, 210],
+    gold: [228, 198, 88],
+    inner: [196, 218, 102],
+    outer: [68, 196, 178],
+    stem: [56, 172, 164],
+    leaf: [50, 166, 156],
+    neon: [57, 255, 20],
+    gray: [150, 165, 158]
+  };
+  let junoCanvasCtx = null;
+  let growthTipFlowerCache = null;
   const MPK_MINI_KEY_START = 48;
   const MPK_MINI_KEY_COUNT = 25;
   const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -898,23 +889,174 @@ document.addEventListener('DOMContentLoaded', function () {
     return NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
   }
 
-  function _junoGlyph(jc, ch, x, y, size, alpha, bright) {
+  function _junoGlyph(jc, ch, x, y, size, alpha, colorKey) {
     if (!ch || alpha <= 0) return;
+    if (colorKey === true) colorKey = 'neon';
+    if (colorKey === false || colorKey == null) colorKey = 'gray';
     const glyphSize = Math.max(JUNO_MIN_GLYPH, size);
-    jc.save();
+    const pal = JUNO_PALETTE[colorKey] || JUNO_PALETTE.gray;
+    const glow = colorKey === 'neon' || colorKey === 'center' || colorKey === 'gold';
     jc.font = `bold ${glyphSize}px ${JUNO_ASCII_FONT}`;
-    let r, g, b;
-    if (bright) {
-      r = 57; g = 255; b = 20;
-    } else {
-      const gray = 160 + Math.floor(alpha * 72);
-      r = g = b = gray;
-    }
-    jc.fillStyle = `rgba(${r},${g},${b},${Math.min(1, alpha)})`;
+    jc.fillStyle = `rgba(${pal[0]},${pal[1]},${pal[2]},${Math.min(1, alpha)})`;
     jc.textAlign = 'center';
     jc.textBaseline = 'middle';
-    jc.fillText(ch, x, y);
-    jc.restore();
+    if (glow) {
+      jc.save();
+      jc.shadowBlur = glyphSize * (colorKey === 'neon' ? 0.9 : 0.55);
+      jc.shadowColor = `rgba(${pal[0]},${pal[1]},${pal[2]},0.7)`;
+      jc.fillText(ch, x, y);
+      jc.restore();
+    } else {
+      jc.fillText(ch, x, y);
+    }
+  }
+
+  function _junoBrightColorKey(baseKey, bright, bursting) {
+    if (!bright && !bursting) return baseKey;
+    if (baseKey === 'center' || baseKey === 'gold') return 'neon';
+    if (bursting && baseKey === 'outer') return bright ? 'neon' : 'outer';
+    return baseKey;
+  }
+
+  function _junoBuildFlowerDotCache(basePR) {
+    const dots = [];
+    const PR = basePR;
+    const petalLen = PR * 1.12;
+    const petalW = PR * 0.74;
+    const centerSteps = Math.max(4, Math.floor(PR * 0.4 / 2.2));
+    for (let i = -centerSteps; i <= centerSteps; i++) {
+      for (let j = -centerSteps; j <= centerSteps; j++) {
+        const dist = Math.hypot(i, j);
+        if (dist > centerSteps * 1.08) continue;
+        if (_junoHash(i, j, 99) > 0.1) continue;
+        const radial = dist / Math.max(1, centerSteps);
+        const size = 8 + (1 - radial) * 10;
+        const colorKey = radial < 0.45 ? 'center' : 'gold';
+        dots.push({
+          rx: i * 2.8, ry: j * 2.4,
+          size, alpha: 0.78 + (1 - radial) * 0.22,
+          colorKey,
+          ch: radial < 0.35 ? '●' : '·'
+        });
+      }
+    }
+    for (let k = 0; k < 5; k++) {
+      const angle = -Math.PI / 2 + (k / 5) * Math.PI * 2;
+      const steps = Math.max(5, Math.floor(petalLen / 3.6));
+      for (let i = 0; i <= steps; i++) {
+        const frac = i / steps;
+        const along = frac * petalLen;
+        const widthAt = petalW * (1 - frac * 0.86);
+        const cols = Math.max(1, Math.ceil(widthAt / 3.0));
+        for (let j = -cols; j <= cols; j++) {
+          const sparse = _junoHash(k, i, j);
+          if (frac > 0.48 && sparse > 0.62 - frac * 0.12) continue;
+          const across = (j / (cols || 1)) * widthAt * 0.5;
+          const rx = Math.cos(angle) * along - Math.sin(angle) * across;
+          const ry = Math.sin(angle) * along * 0.86 + Math.cos(angle) * across;
+          const radial = Math.hypot(rx, ry) / PR;
+          let colorKey = 'outer';
+          if (radial < 0.22) colorKey = 'center';
+          else if (radial < 0.4) colorKey = 'gold';
+          else if (radial < 0.58) colorKey = 'inner';
+          const size = 5 + (1 - frac) * 10 + (radial < 0.35 ? 4 : 0);
+          const ch = frac < 0.22 && radial < 0.4 ? '●' : JUNO_DOT_CHARS[(k + j) % JUNO_DOT_CHARS.length];
+          dots.push({ rx, ry, size, alpha: 0.32 + (1 - frac) * 0.52, colorKey, ch });
+          if (frac > 0.52 && sparse > 0.68) {
+            dots.push({
+              rx: rx + (_junoHash(k, i, j + 3) - 0.5) * 10,
+              ry: ry + (_junoHash(k, i, j + 4) - 0.5) * 8,
+              size: 5 + (1 - frac) * 3,
+              alpha: 0.18 + (1 - frac) * 0.2,
+              colorKey: 'outer',
+              ch: '.'
+            });
+          }
+        }
+      }
+    }
+    return { basePR: PR, dots };
+  }
+
+  function _junoHash(a, b, c) {
+    const n = ((a * 73856093) ^ (b * 19349663) ^ ((c || 0) * 83492791)) >>> 0;
+    return (n % 1000) / 1000;
+  }
+
+  function _junoStemPoint(fl, frac, sway, stemBend) {
+    const sx = sway * frac + stemBend * frac * frac;
+    return {
+      x: fl.x + sx,
+      y: fl.y + 3 - frac * fl.stemH
+    };
+  }
+
+  function _junoDrawStemDots(jc, fl, stemSteps, sway, stemBend, bright) {
+    const stemKey = bright ? 'neon' : 'stem';
+    for (let s = 0; s <= stemSteps; s++) {
+      const frac = s / stemSteps;
+      const pt = _junoStemPoint(fl, frac, sway, stemBend);
+      const dotSize = Math.max(JUNO_MIN_GLYPH, 9 + (1 - frac) * 2);
+      _junoGlyph(jc, ':', pt.x, pt.y, dotSize, 0.5 + frac * 0.28, stemKey);
+    }
+  }
+
+  function _junoDrawLeafSpray(jc, baseX, baseY, side, t, leafId, bright) {
+    const dir = side;
+    const len = 18 + (leafId % 3) * 8;
+    const leafKey = bright ? 'neon' : 'leaf';
+    const curve = dir * (14 + (leafId % 2) * 8);
+    for (let i = 0; i < len; i++) {
+      const frac = i / len;
+      const sparse = _junoHash(leafId, i, 7);
+      if (sparse > 0.5 - frac * 0.38) continue;
+      const lx = baseX + dir * (8 + frac * 28) + Math.sin(frac * 2.6) * curve * 0.32;
+      const ly = baseY - frac * 18 + Math.sin(t * 0.018 + leafId + frac * 3) * 2;
+      const drift = (_junoHash(leafId, i, 3) - 0.5) * (3 + frac * 8);
+      const dotSize = 5 + (1 - frac) * 7 + (_junoHash(leafId, i, 8) > 0.6 ? 3 : 0);
+      const ch = JUNO_DOT_CHARS[Math.floor(_junoHash(leafId, i, 1) * JUNO_DOT_CHARS.length)];
+      _junoGlyph(
+        jc, ch,
+        lx + drift, ly + (_junoHash(leafId, i, 5) - 0.5) * 4,
+        Math.max(JUNO_MIN_GLYPH, dotSize),
+        0.22 + (1 - frac) * 0.48,
+        leafKey
+      );
+    }
+    for (let s = 0; s < 10; s++) {
+      const frac = _junoHash(leafId, s, 12);
+      const lx = baseX + dir * (14 + frac * 32) + (_junoHash(leafId, s, 13) - 0.5) * 14;
+      const ly = baseY - frac * 20 + (_junoHash(leafId, s, 14) - 0.5) * 10;
+      _junoGlyph(jc, '.', lx, ly, Math.max(JUNO_MIN_GLYPH, 6), 0.12 + frac * 0.15, leafKey);
+    }
+  }
+
+  function _junoDrawFlowerHead(jc, cx, cy, PR, bright, bursting, t, dotCache) {
+    const cache = dotCache || _junoBuildFlowerDotCache(PR);
+    const scale = PR / cache.basePR;
+    cache.dots.forEach(function(d) {
+      const colorKey = _junoBrightColorKey(d.colorKey, bright, bursting);
+      _junoGlyph(
+        jc, d.ch,
+        cx + d.rx * scale, cy + d.ry * scale,
+        d.size * scale, d.alpha,
+        colorKey
+      );
+    });
+    if (bursting) {
+      for (let k = 0; k < 10; k++) {
+        const ang = (k / 10) * Math.PI * 2 + t * 0.1;
+        const scatter = PR * (0.45 + _junoHash(k, 11, 0) * 0.5);
+        _junoGlyph(
+          jc, '+',
+          cx + Math.cos(ang) * scatter,
+          cy + Math.sin(ang) * scatter * 0.78,
+          Math.max(JUNO_MIN_GLYPH, 11),
+          0.45 + _junoHash(k, 22, 0) * 0.4,
+          'neon'
+        );
+      }
+    }
   }
 
   function _junoKeyboardKeys() {
@@ -1020,6 +1162,7 @@ document.addEventListener('DOMContentLoaded', function () {
     keys.forEach(function(k, i) {
       const frac = n > 1 ? i / (n - 1) : 0.5;
       const x = marginX + frac * spanX;
+      const petalR = 24 + (i % 4) * 4 + Math.random() * 6;
       flowers.push({
         keyCode: k.keyCode,
         midiNote: k.midiNote,
@@ -1028,8 +1171,15 @@ document.addEventListener('DOMContentLoaded', function () {
         keyIndex: k.keyIndex,
         x: x,
         y: H * 0.74 + (i % 3) * H * 0.028 + (Math.random() - 0.5) * H * 0.01,
-        stemH: 52 + (i % 4) * 10 + Math.random() * 18,
-        petalR: 16 + (i % 4) * 3 + Math.random() * 5,
+        stemH: 58 + (i % 4) * 12 + Math.random() * 20,
+        petalR: petalR,
+        dotCache: _junoBuildFlowerDotCache(petalR),
+        leafSlots: [
+          { frac: 0.26 + (i % 2) * 0.04, side: -1, id: i * 2 },
+          { frac: 0.44 + (i % 3) * 0.03, side: 1, id: i * 2 + 1 },
+          { frac: 0.62 + (i % 2) * 0.05, side: -1, id: i * 2 + 2 },
+          { frac: 0.78 + (i % 3) * 0.02, side: 1, id: i * 2 + 3 }
+        ],
         phase: (i / n) * Math.PI * 2,
         bloomState: 0.55,
         bloomSpeed: 0.002,
@@ -1069,7 +1219,7 @@ document.addEventListener('DOMContentLoaded', function () {
         h: 12 + Math.random() * 28,
         phase: Math.random() * Math.PI * 2,
         speed: 0.7 + Math.random() * 1.0,
-        ch: ['|', '/', '\\'][Math.floor(Math.random() * 3)]
+        ch: ['·', '.', ':'][Math.floor(Math.random() * 3)]
       });
     }
 
@@ -1085,7 +1235,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function triggerJunoNoteEvent(freq, velocity, keyCode, midiNote) {
-    if (!isJunoFlowMode() || !junoScene) return;
+    if (!isJunoFlowMode()) return;
+    if (!junoScene || junoScene.W !== canvas.width || junoScene.H !== canvas.height) {
+      _junoInitScene();
+    }
     const flower = _junoFindFlower(keyCode, freq, midiNote);
     if (!flower) return;
 
@@ -1093,14 +1246,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const growthBoost = (synthVisual.growthLevel || 0) * 0.35;
     flower.held = true;
 
-    const burstAdd = 48 + Math.floor((intensity + growthBoost) * 32);
+    const burstAdd = 56 + Math.floor((intensity + growthBoost) * 36);
     flower.burstTimer = Math.min(72, Math.max(flower.burstTimer, burstAdd));
-    flower.burstPeak = Math.min(3.4, 2.0 + intensity * 1.1 + Math.random() * 0.2);
+    flower.burstPeak = Math.min(3.5, 2.1 + intensity * 1.15 + Math.random() * 0.15);
     flower.burstScale = flower.burstPeak;
     flower.stemBend = Math.min(24, flower.stemBend + intensity * 16);
-    flower.brightTimer = Math.min(56, flower.brightTimer + 36);
-    flower.petalPulse = 1 + intensity * 0.85;
-    flower.bloomState = Math.min(1, flower.bloomState + 0.12);
+    flower.brightTimer = Math.min(64, Math.max(flower.brightTimer, 52));
+    flower.petalPulse = 1 + intensity * 0.9;
+    flower.bloomState = Math.min(1, flower.bloomState + 0.14);
+    flower.flashTimer = 10;
     flower.rings = flower.rings || [];
 
     for (let ri = 0; ri < 2; ri++) {
@@ -1161,7 +1315,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const cy = _junoFlowerHeadY(fl);
 
     if (fl.flashTimer > 0) {
-      _junoGlyph(jc, '#', cx, cy, PR * 2.8, fl.flashTimer / 8 * 0.35, true);
+      _junoGlyph(jc, '#', cx, cy, PR * 2.8, fl.flashTimer / 8 * 0.35, 'neon');
     }
 
     fl.popParticles = fl.popParticles.filter(p => p.life > 0);
@@ -1175,7 +1329,7 @@ document.addEventListener('DOMContentLoaded', function () {
         jc, p.ch, p.x, p.y,
         p.size * (0.55 + p.life * 0.55),
         p.life * 0.95,
-        p.neon || bright
+        p.neon ? 'neon' : (bright ? 'inner' : 'outer')
       );
     });
 
@@ -1184,66 +1338,33 @@ document.addEventListener('DOMContentLoaded', function () {
       fl.rings.forEach(ring => {
         ring.life -= 0.014;
         ring.r += ring.speed;
-        const ringAlpha = ring.life * 0.82;
-        const ringGlyphs = bursting ? 18 : 12;
+        const ringAlpha = ring.life * 0.72;
+        const ringGlyphs = bursting ? 16 : 10;
         for (let k = 0; k < ringGlyphs; k++) {
           const ang = (k / ringGlyphs) * Math.PI * 2;
           _junoGlyph(
-            jc, bursting ? '+' : 'o',
+            jc, bursting ? '+' : '·',
             cx + Math.cos(ang) * ring.r,
             cy + Math.sin(ang) * ring.r * 0.74,
-            Math.max(JUNO_MIN_GLYPH, bursting ? 12 : 10), ringAlpha, bright || bursting
+            Math.max(JUNO_MIN_GLYPH, bursting ? 11 : 8),
+            ringAlpha,
+            bursting ? 'neon' : 'outer'
           );
         }
       });
     }
 
-    const stemSteps = Math.max(3, Math.floor(fl.stemH / 8));
-    for (let s = 0; s <= stemSteps; s++) {
-      const frac = s / stemSteps;
-      const bend = fl.stemBend * frac * frac;
-      const sx = sway * frac + bend;
-      const sy = fl.y + 3 - frac * fl.stemH;
-      _junoGlyph(jc, '|', fl.x + sx, sy, Math.max(JUNO_MIN_GLYPH, 12), bright ? 0.7 : 0.38, bright);
-    }
+    const stemSteps = Math.max(4, Math.floor(fl.stemH / 6));
+    _junoDrawStemDots(jc, fl, stemSteps, sway, fl.stemBend, bright);
 
-    const petalCh = bursting ? '#' : '*';
-    const centerCh = bursting ? '@' : 'O';
-    const petalSize = Math.max(JUNO_MIN_GLYPH, 14 + PR * (bursting ? 0.85 : 0.42));
-    const petalCount = bursting ? 8 : 6;
-    for (let k = 0; k < petalCount; k++) {
-      const ang = (k / petalCount) * Math.PI * 2 + t * 0.0042;
-      const pulseR = PR * (1 + (bursting ? 0.28 * Math.sin(t * 0.28 + k) : 0));
-      const px = cx + Math.cos(ang) * pulseR;
-      const py = cy + Math.sin(ang) * pulseR * 0.74;
-      _junoGlyph(jc, petalCh, px, py, petalSize, bursting ? 1 : 0.68, bright);
-    }
-    _junoGlyph(jc, centerCh, cx, cy, petalSize + 6, bursting ? 1 : 0.78, bright);
+    (fl.leafSlots || []).forEach(slot => {
+      const pt = _junoStemPoint(fl, slot.frac, sway, fl.stemBend);
+      _junoDrawLeafSpray(jc, pt.x, pt.y, slot.side, t, slot.id, bright);
+    });
 
-    if (bursting) {
-      const ringR = PR * (1.3 + (1 - fl.burstTimer / JUNO_BURST_FRAMES) * 1.6);
-      const ringAlpha = (fl.burstTimer / JUNO_BURST_FRAMES) * 0.92;
-      for (let k = 0; k < 14; k++) {
-        const ang = (k / 14) * Math.PI * 2;
-        _junoGlyph(
-          jc, '+',
-          cx + Math.cos(ang) * ringR,
-          cy + Math.sin(ang) * ringR * 0.74,
-          Math.max(JUNO_MIN_GLYPH, 15), ringAlpha, true
-        );
-      }
-      for (let k = 0; k < 8; k++) {
-        const ang = (k / 8) * Math.PI * 2 + t * 0.1;
-        _junoGlyph(
-          jc, '*',
-          cx + Math.cos(ang) * ringR * 0.65,
-          cy + Math.sin(ang) * ringR * 0.5,
-          Math.max(JUNO_MIN_GLYPH, 14), ringAlpha * 0.8, true
-        );
-      }
-    }
+    _junoDrawFlowerHead(jc, cx, cy, PR, bright, bursting, t, fl.dotCache);
 
-    _junoGlyph(jc, fl.keyLabel, fl.x, fl.y + 16, JUNO_MIN_GLYPH, bright ? 0.85 : 0.38, bright);
+    _junoGlyph(jc, fl.keyLabel, fl.x, fl.y + 16, JUNO_MIN_GLYPH, bright ? 0.85 : 0.42, bright ? 'neon' : 'gray');
   }
 
   function drawJunoFrame(options) {
@@ -1265,11 +1386,13 @@ document.addEventListener('DOMContentLoaded', function () {
     sc.t++;
     const t = sc.t;
     if (!options.flush && typeof updateVisualSynthState === 'function') updateVisualSynthState();
-    const jc = canvas.getContext('2d');
+    const jc = junoCanvasCtx || canvas.getContext('2d');
+    junoCanvasCtx = jc;
     const groundY = H * 0.77;
     const tempoPulse = Math.sin(synthVisual.tempoPulse * Math.PI * 2) * 0.12;
     const filterBright = 0.35 + synthVisual.filterOpen * 0.65;
     const echoGlow = synthVisual.echoGlow;
+    const lite = options.lite;
 
     junoFlowersActive = true;
 
@@ -1285,62 +1408,59 @@ document.addEventListener('DOMContentLoaded', function () {
       jc.restore();
     }
 
-    const windShift = (synthVisual.windPan || 0) * W * 0.04;
+    if (!lite) {
+      sc.skyDots.forEach(d => {
+        const flicker = 0.35 + filterBright * 0.2 + tempoPulse
+          + 0.15 * Math.sin(t * 0.018 + d.phase);
+        _junoGlyph(jc, d.ch, d.x, d.y, d.size, d.alpha * flicker, 'outer');
+      });
 
-    jc.save();
-    jc.globalAlpha = 0.035 + echoGlow * 0.06;
-    for (let sy = 0; sy < H; sy += 4) {
-      jc.fillStyle = 'rgba(255,255,255,0.06)';
-      jc.fillRect(0, sy, W, 1);
+      sc.falling.forEach((p, i) => {
+        p.x += p.vx + Math.sin(t * 0.017 + i * 1.4) * 0.28;
+        p.y += p.vy;
+        if (p.y > H + 22) sc.falling[i] = _junoMakeFallingChar(W, H);
+        _junoGlyph(jc, p.ch, p.x, p.y, p.size, p.alpha, 'leaf');
+      });
+
+      for (let gx = 0; gx < W; gx += 8) {
+        _junoGlyph(jc, '·', gx + 4, groundY, Math.max(JUNO_MIN_GLYPH, 8), 0.28, 'stem');
+      }
+
+      sc.grass.forEach(blade => {
+        const sway = Math.sin(t * 0.01 * blade.speed + blade.phase) * (4.8 + synthVisual.volumeScale * 3);
+        _junoGlyph(
+          jc, blade.ch,
+          blade.x + sway, groundY - blade.h * 0.5,
+          Math.max(JUNO_MIN_GLYPH, 9), 0.22 + filterBright * 0.18,
+          'leaf'
+        );
+      });
     }
-    jc.restore();
-
-    sc.skyDots.forEach(d => {
-      const flicker = 0.35 + filterBright * 0.2 + tempoPulse
-        + 0.15 * Math.sin(t * 0.018 + d.phase);
-      _junoGlyph(jc, d.ch, d.x, d.y, d.size, d.alpha * flicker);
-    });
-
-    sc.falling.forEach((p, i) => {
-      p.x += p.vx + Math.sin(t * 0.017 + i * 1.4) * 0.28;
-      p.y += p.vy;
-      if (p.y > H + 22) sc.falling[i] = _junoMakeFallingChar(W, H);
-      _junoGlyph(jc, p.ch, p.x, p.y, p.size, p.alpha);
-    });
-
-    for (let gx = 0; gx < W; gx += 8) {
-      _junoGlyph(jc, '_', gx + 4, groundY, Math.max(JUNO_MIN_GLYPH, 10), 0.32);
-    }
-
-    sc.grass.forEach(blade => {
-      const sway = Math.sin(t * 0.01 * blade.speed + blade.phase) * (4.8 + synthVisual.volumeScale * 3);
-      _junoGlyph(
-        jc, blade.ch,
-        blade.x + sway, groundY - blade.h * 0.5,
-        Math.max(JUNO_MIN_GLYPH, 10), 0.28 + filterBright * 0.22
-      );
-    });
 
     sc.flowers.slice().sort(function(a, b) { return a.y - b.y; }).forEach(function(fl) {
       _junoDrawFlower(jc, fl, t);
     });
 
     sc.pollen.forEach((p, i) => {
-      p.x += p.vx + Math.sin(t * 0.018 + i * 0.72) * 0.19;
-      p.y += p.vy;
-      p.life -= 0.0017;
-      if (p.life <= 0 || p.y < -8) {
-        sc.pollen[i] = {
-          x: Math.random() * W,
-          y: H * 0.88,
-          vx: (Math.random() - 0.5) * 0.24,
-          vy: -0.07 - Math.random() * 0.18,
-          life: 1,
-          ch: ['.', "'", '`'][Math.floor(Math.random() * 3)],
-          size: JUNO_MIN_GLYPH + Math.random() * 4
-        };
+      if (!lite) {
+        p.x += p.vx + Math.sin(t * 0.018 + i * 0.72) * 0.19;
+        p.y += p.vy;
+        p.life -= 0.0017;
+        if (p.life <= 0 || p.y < -8) {
+          sc.pollen[i] = {
+            x: Math.random() * W,
+            y: H * 0.88,
+            vx: (Math.random() - 0.5) * 0.24,
+            vy: -0.07 - Math.random() * 0.18,
+            life: 1,
+            ch: ['.', "'", '`'][Math.floor(Math.random() * 3)],
+            size: JUNO_MIN_GLYPH + Math.random() * 4
+          };
+        }
       }
-      _junoGlyph(jc, p.ch, p.x, p.y, p.size, (0.18 + echoGlow * 0.35 + filterBright * 0.12) * p.life);
+      if (!lite || p.life > 0.5) {
+        _junoGlyph(jc, p.ch, p.x, p.y, p.size, (0.18 + echoGlow * 0.35 + filterBright * 0.12) * p.life, 'gold');
+      }
     });
 
     if (!options.flush) junoFlowersAnimId = requestAnimationFrame(drawJunoFrame);
@@ -1351,11 +1471,11 @@ document.addEventListener('DOMContentLoaded', function () {
   function flushModeVisual() {
     if (isJunoFlowMode()) {
       if (!junoFlowersAnimId) drawJunoFrame();
-      else drawJunoFrame({ flush: true });
+      else drawJunoFrame({ flush: true, lite: true });
     } else if (isGrowthMode()) {
       if (!vine) resetVine();
       if (!vineAnimId) growVineFrame();
-      else growVineFrame({ flush: true });
+      else growVineFrame({ flush: true, lite: true });
     } else {
       drawEqVisualizerFrame({ flush: true });
     }
@@ -1539,7 +1659,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const preset = getPresetParams();
     const particleAmt = (preset.growth && preset.growth.particleAmount) || 1;
     const count = Math.floor(40 + particleAmt * 24);
-    const GROWTH_CHARS = ['*', '+', '.', "'", '`'];
     for (let i = 0; i < count; i++) {
       growthPollen.push({
         x: Math.random() * canvas.width,
@@ -1548,7 +1667,8 @@ document.addEventListener('DOMContentLoaded', function () {
         vy: -0.25 - Math.random() * 0.55,
         life: 0.35 + Math.random() * 0.65,
         size: 6 + Math.random() * 6,
-        ch: GROWTH_CHARS[Math.floor(Math.random() * GROWTH_CHARS.length)]
+        ch: JUNO_DOT_CHARS[Math.floor(Math.random() * JUNO_DOT_CHARS.length)],
+        neon: Math.random() > 0.82
       });
     }
   }
@@ -1563,15 +1683,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const intensity = typeof velocity === 'number' ? Math.max(0.4, velocity / 127) : 0.88;
     const bloom = growthCfg.bloomIntensity || 1;
 
-    vine.pulse = Math.min(3.4, vine.pulse + 1.6 + intensity * 1.1 * bloom);
-    vine.growthBurst = Math.min(1.4, 0.65 + intensity * 0.75 * bloom);
-    vine.growSlow += 2.5 + intensity * 4 * (growthCfg.movementAmount || 1);
-    growthNoteFlash = Math.min(1.2, 0.55 + intensity * 0.65);
+    vine.pulse = Math.min(3.5, vine.pulse + 1.7 + intensity * 1.15 * bloom);
+    vine.growthBurst = Math.min(1.5, 0.75 + intensity * 0.8 * bloom);
+    vine.growSlow += 3 + intensity * 4.5 * (growthCfg.movementAmount || 1);
+    growthNoteFlash = Math.min(1.3, 0.65 + intensity * 0.7);
 
     const tipX = vine.tipX;
     const tipY = vine.tipY;
     const count = Math.floor(22 + intensity * 32 * (growthCfg.particleAmount || 1));
-    const GROWTH_CHARS = ['*', '+', '#', '.', "'", '`'];
     for (let i = 0; i < count; i++) {
       const ang = (i / count) * Math.PI * 2 + Math.random() * 0.6;
       const speed = 3.5 + Math.random() * 7 + intensity * 4;
@@ -1582,7 +1701,8 @@ document.addEventListener('DOMContentLoaded', function () {
         vy: Math.sin(ang) * speed - 2.5 - Math.random() * 2.5,
         life: 1,
         size: 8 + Math.random() * 10 + intensity * 8,
-        ch: GROWTH_CHARS[Math.floor(Math.random() * GROWTH_CHARS.length)]
+        ch: JUNO_POP_CHARS[Math.floor(Math.random() * JUNO_POP_CHARS.length)],
+        neon: Math.random() > 0.45
       });
     }
 
@@ -2137,13 +2257,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function holdNote(voiceId, freq, velocity, midiEventTimeMs) {
     if (activeVoices.has(voiceId)) return;
+
+    const ids = parseVoiceTriggerIds(voiceId);
+    triggerModeNoteVisual(freq, velocity, ids.keyCode, ids.midiNote);
+    flushModeVisual();
+
     if (!ensureLiveAudioReady()) return;
 
     trimVoicesIfNeeded();
-    const ids = parseVoiceTriggerIds(voiceId);
-
-    triggerModeNoteVisual(freq, velocity, ids.keyCode, ids.midiNote);
-    flushModeVisual();
 
     const params = buildToneParams(freq, velocity);
     const startTime = resolveStartTime(midiEventTimeMs);
